@@ -36,7 +36,7 @@ using namespace std::chrono;
 
 double infer_tau(double x,double a, double b, double c){
 
-    double y,Z,P,arg,k,atol,tau,A;
+    double y,Z,P,arg,atol,tau,A;
 
     // Compute normalization of truncated exponential dist.
     Z = (1/c) * (exp(c*(b-a)) - 1) - (b - a);
@@ -49,12 +49,10 @@ double infer_tau(double x,double a, double b, double c){
 
     // Determine LambertW branch & compute tau
     arg = max(-1/exp(1), A*c*exp(c*y));
-    k = c < 0 ? 0 : -1;
-    if (k==0){
+    if (c < 0){ // k = 0 branch
         tau = (1/c)*lambert_w0(arg)-y;
     }
-    else {
-        // wm1_ctr++;
+    else {      // k = -1 branch
         tau = (1/c)*lambert_wm1(arg)-y;
     }
 
@@ -83,51 +81,6 @@ double infer_tau2(double x,double a, double b, double c){
     /*::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
 
     return tau;
-}
-
-/*-------------------------- Benchmarking functions --------------------------*/
-
-template<class F>
-void benchmark_infer_tau(F&& f, double x_in = 0.0f, double a_in = 0.0f, 
-                          double b_in = 0.0f   , double c_in = 0.0f)
-{
-    auto constexpr count = 1'000'000;
-
-    volatile double a = a_in;
-    volatile double b = b_in;
-    volatile double c = c_in;
-    volatile double x = x_in;
-
-    volatile double r;
-
-    auto const t_start = std::chrono::high_resolution_clock::now();
-    for (auto i = 0; i < count; ++i)
-        r = f(x,a,b,c);
-    auto const t_end = std::chrono::high_resolution_clock::now();
-
-    auto const dt = std::chrono::duration<double>(t_end - t_start).count();
-    std::cout << dt / count * 1e9 << " ns / op" << std::endl;
-}
-
-void benchmark_infer_tau2(F&& f, double x_in = 0.0f, double a_in = 0.0f, 
-                          double b_in = 0.0f   , double c_in = 0.0f)
-{
-    auto constexpr count = 1'000'000;
-
-    volatile double a = a_in;
-    volatile double b = b_in;
-    volatile double c = c_in;
-    volatile double x = x_in;
-
-    volatile double r;
-
-    auto const t_start = std::chrono::high_resolution_clock::now();
-    for (auto i = 0; i < count; ++i)
-        r = f(x,a,b,c);
-    auto const t_end = std::chrono::high_resolution_clock::now();
-
-    auto const dt = std::chrono::duration<double>(t_end - t_start).count();
-    std::cout << dt / count * 1e9 << " ns / op" << std::endl;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -178,7 +131,8 @@ int main(int argc, char** argv){
     arg0 = 1.2;
     start = high_resolution_clock::now();
     for (int i=0; i < num_samples; i++){
-        log(arg0);
+        x = rnum(rng);
+        log(x);
     }
      end = high_resolution_clock::now();
      elapsed_time = duration_cast<nanoseconds>(end - start);
@@ -200,16 +154,40 @@ int main(int argc, char** argv){
     cout << "max()              | " << duration/num_samples <<endl;
 
     // Time execution of rnum(rng) "i.e rand()"
+    float randsum =0;
     start = high_resolution_clock::now();
     for (int i=0; i < num_samples; i++){
-        rnum(rng);
+        x = rnum(rng);
+
+        randsum += x;
     }
+    // cout << "randsum: " << randsum << endl;
+
      end = high_resolution_clock::now();
      elapsed_time = duration_cast<nanoseconds>(end - start);
      duration = elapsed_time.count() * 1e-9;
 
     cout << "------------------------------------" << endl;
     cout << "rand()             | " << duration/num_samples <<endl;
+
+    // Time execution of exp(x1-x2) "i.e rand()"
+    randsum =0;
+    double x1,x2;
+    start = high_resolution_clock::now();
+    for (int i=0; i < num_samples; i++){
+        x1 = rnum(rng);
+        x2 = rnum(rng);
+
+        randsum += exp(x1-x2);
+    }
+    cout << "randsum: " << randsum << endl;
+
+     end = high_resolution_clock::now();
+     elapsed_time = duration_cast<nanoseconds>(end - start);
+     duration = elapsed_time.count() * 1e-9;
+
+    cout << "------------------------------------" << endl;
+    cout << "exp(x1-x2)         | " << duration/num_samples <<endl;
 
     // Time execution of lambert_w0"
     arg2 = 10.0;
@@ -227,8 +205,11 @@ int main(int argc, char** argv){
     // Time execution of lambert_wm1"
     arg3 = -0.2;
     start = high_resolution_clock::now();
-    for (int i=0; i < num_samples*100; i++){
+    for (int i=0; i < num_samples; i++){
         lambert_wm1(arg3);
+
+        arg3sum+=arg3;
+
     }
      end = high_resolution_clock::now();
      elapsed_time = duration_cast<nanoseconds>(end - start);
@@ -237,35 +218,36 @@ int main(int argc, char** argv){
     cout << "------------------------------------" << endl;
     cout << "lambert_wm1        | " << duration/num_samples <<endl;
 
+    float sum;
+    sum = 0;
     // Time execution of sampling tau1 and tau2"
     start = high_resolution_clock::now();
     for (int i=0;i<num_samples;i++){
         /* sample a random x value from U(0,1)*/
-        tau1 = infer_tau(rnum(rng),a,b,c);
+        x = rnum(rng);
+        tau1 = infer_tau(x,a,b,c);
         // samples[i] = tau1;
 
+        x = rnum(rng);
         a_new = tau1;
-        tau2 = infer_tau2(rnum(rng),a_new,b,c);
+        tau2 = infer_tau2(x,a_new,b,c);
+
         // samples2[i] = tau2;
+        sum+=tau1; 
     }
+    cout << "sum: " << sum << endl;
+    
      end = high_resolution_clock::now();
      elapsed_time = duration_cast<nanoseconds>(end - start);
      duration = elapsed_time.count() * 1e-9;
 
     cout << "------------------------------------" << endl;
     cout << "sampling tau1,tau2 | " << duration/num_samples <<endl;
+    cout << endl;
 
-    // cout << endl;
     // cout << fixed;
     // cout << "w0 = " << (w0_ctr*1.0)/num_samples << " %" << endl;
     // cout << "wm1 = " << (num_samples - w0_ctr)*1.0/num_samples << " %" << endl;
-
-    x = rnum(rng);
-    benchmark_infer_tau(infer_tau,x,a,b,c);
-    benchmark_infer_tau(infer_tau,x,a,b,c);
-
-
-    cout << endl;
 
     // // Create file name
     // string filename,filename2;
