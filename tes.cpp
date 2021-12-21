@@ -85,6 +85,53 @@ double infer_tau2(double x,double a, double b, double c){
 
 /*----------------------------------------------------------------------------*/
 
+double shifted_infer_tau(double x,double a, double b, double c){
+
+    double y,Z,P,arg,atol,tau,A,a_pre_shift,b_pre_shift,inverse_c;
+
+    // Save original values of the upper bounds
+    a_pre_shift = a;
+    b_pre_shift = b;
+
+    // Shift lower and upper bounds
+    a -= b;
+    b -= b;
+
+    // Compute normalization of truncated exponential dist.
+    inverse_c = 1/c;
+    Z = inverse_c * (exp(c*(b-a)) - 1) - (b - a);
+    
+    //
+    y = Z*x - inverse_c*exp(c*(b-a)) - a;
+
+    //
+    A = -inverse_c;
+
+    // Determine LambertW branch & compute tau
+    arg = max(-1/exp(1), A*c*exp(c*y));
+    if (c < 0){ // k = 0 branch
+        tau = inverse_c*lambert_w0(arg)-y;
+    }
+    else {      // k = -1 branch
+        tau = inverse_c*lambert_wm1(arg)-y;
+    }
+
+    tau += b_pre_shift;
+    // cout << tau << endl;
+
+    // Check with specific x values
+    // double F;
+    // F = (1/Z) * ((1/c) * (exp(c*(b-a))-exp(c*(b-tau)))-(tau-a));
+    // atol = 1.0e-10;
+    // assert(abs(y-(A*exp(-c*tau)-tau)) <= atol);
+    // assert(abs(F-x) <= atol);
+    // assert(a-atol <= tau);
+    // assert(tau <= b+atol);
+
+    return tau;
+}
+
+/*----------------------------------------------------------------------------*/
 // Main
 int main(int argc, char** argv){
 
@@ -97,9 +144,9 @@ int main(int argc, char** argv){
     // set parameters
     a = 0.1;  // lower bound
     b = 1.3;  // upper bound
-    c = 0.5; // exponential decay
+    c = -0.5; // exponential decay
 
-    // To ollect samples
+    // To collect samples
     vector<double> samples(num_samples,0);
     vector<double> samples2(num_samples,0);
 
@@ -204,6 +251,7 @@ int main(int argc, char** argv){
 
     // Time execution of lambert_wm1"
     arg3 = -0.2;
+    float arg3sum = 0;
     start = high_resolution_clock::now();
     for (int i=0; i < num_samples; i++){
         lambert_wm1(arg3);
@@ -245,33 +293,55 @@ int main(int argc, char** argv){
     cout << "sampling tau1,tau2 | " << duration/num_samples <<endl;
     cout << endl;
 
-    // cout << fixed;
-    // cout << "w0 = " << (w0_ctr*1.0)/num_samples << " %" << endl;
-    // cout << "wm1 = " << (num_samples - w0_ctr)*1.0/num_samples << " %" << endl;
+    sum = 0;
+    // Time execution of sampling shifted tau1 and tau2"
+    start = high_resolution_clock::now();
+    for (int i=0;i<num_samples;i++){
+        /* sample a random x value from U(0,1)*/
+        x = rnum(rng);
+        tau1 = shifted_infer_tau(x,a,b,c);
+        samples[i] = tau1;
 
-    // // Create file name
-    // string filename,filename2;
-    // filename=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
-    // "_samples.dat";
+        x = rnum(rng);
+        a_new = tau1;
+        tau2 = infer_tau2(x,a_new,b,c);
 
-    // filename2=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
-    // "_samples2.dat";
+        samples2[i] = tau2;
+        sum+=tau1; 
+    }
+    cout << "sum: " << sum << endl;
+    
+     end = high_resolution_clock::now();
+     elapsed_time = duration_cast<nanoseconds>(end - start);
+     duration = elapsed_time.count() * 1e-9;
 
-    // // Open files
-    // ofstream samples_file,samples_file2;
-    // samples_file.open(filename);
-    // samples_file2.open(filename2);
+    cout << "------------------------------------" << endl;
+    cout << "shifted  tau1,tau2 | " << duration/num_samples <<endl;
+    cout << endl;
+
+    // Create file name
+    string filename,filename2;
+    filename=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
+    "_samples.dat";
+
+    filename2=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
+    "_samples2.dat";
+
+    // Open files
+    ofstream samples_file,samples_file2;
+    samples_file.open(filename);
+    samples_file2.open(filename2);
 
 
-    // // Write sampled numbers to file
-    // for (int i=0; i<samples.size(); i++){
-    //     samples_file<<fixed<<setprecision(17)<<samples[i]<<endl;
-    //     samples_file2<<fixed<<setprecision(17)<<samples2[i]<<endl;
-    // }
+    // Write sampled numbers to file
+    for (int i=0; i<samples.size(); i++){
+        samples_file<<fixed<<setprecision(17)<<samples[i]<<endl;
+        samples_file2<<fixed<<setprecision(17)<<samples2[i]<<endl;
+    }
 
-    // // Close file
-    // samples_file.close();
-    // samples_file2.close();
+    // Close file
+    samples_file.close();
+    samples_file2.close();
 
     return 0;
 }
