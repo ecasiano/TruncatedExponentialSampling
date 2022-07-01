@@ -34,7 +34,13 @@ using boost::math::lambert_wm1;
 using namespace std;
 using namespace std::chrono;
 
-double infer_tau(double x,double a, double b, double c){
+/*-------------------------- Function Definitions ----------------------------*/
+
+double infer_tau1(double x,double a, double b, double c){
+
+    /* samples tau1 from marginalized distribution P(tau1), which is obtained by
+    integrating tau2 dependence from joint truncated exponential distribution
+    P(tau1,tau2). Constraint: a < tau1 < tau2 < b */
 
     double y,Z,P,arg,atol,tau,A;
 
@@ -71,26 +77,54 @@ double infer_tau(double x,double a, double b, double c){
 
 /*----------------------------------------------------------------------------*/
 
-inline double infer_tau2(double x,double a, double b, double c){
+double infer_tau1_with_rejection(double x,double a, double b, double c){
 
-    double tau,Z;
+    /* samples tau1 from marginalized distribution P(tau1), which is obtained by
+    integrating tau2 dependence from joint truncated exponential distribution
+    P(tau1,tau2). Constraint: a < tau1 < tau2 < b */
 
-    /* ---- */
-    // Sample the new time of the worm end from truncated exponential dist.
-    /*:::::::::::::::::::: Truncated Exponential RVS :::::::::::::::::::::::::*/
-    Z = 1.0 - exp(-(-c)*(b-a));
-    tau = a - log(1.0-Z*x)  / (-c);
+    double y,Z,P,arg,atol,tau,A;
+
+    // Compute normalization of truncated exponential dist.
+    Z = (1/c) * (exp(c*(b-a)) - 1) - (b - a);
     // cout << Z << endl;
-    /*::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+    
+    //
+    y = Z*x - (1/c)*exp(c*(b-a)) - a;
+
+    //
+    A = -(1/c)*exp(c*b);
+
+    // Determine LambertW branch & compute tau
+    arg = max(-1/exp(1), A*c*exp(c*y));
+    // cout << -1/exp(1) << " " << A*c*exp(c*y) << endl;
+    if (c < 0){ // k = 0 branch
+        tau = (1/c)*lambert_w0(arg)-y;
+    }
+    else {      // k = -1 branch
+        tau = (1/c)*lambert_wm1(arg)-y;
+    }
+
+    // Check with specific x values
+    // double F;
+    // F = (1/Z) * ((1/c) * (exp(c*(b-a))-exp(c*(b-tau)))-(tau-a));
+    // atol = 1.0e-10;
+    // assert(abs(y-(A*exp(-c*tau)-tau)) <= atol);
+    // assert(abs(F-x) <= atol);
+    // assert(a-atol <= tau <= b+atol);
 
     return tau;
 }
 
 /*----------------------------------------------------------------------------*/
 
-double shifted_infer_tau(double x,double a, double b, double c){
+double shifted_infer_tau1(double x,double a, double b, double c){
 
     double y,Z,P,arg,atol,tau,A,a_pre_shift,b_pre_shift,inverse_c;
+
+    /* samples tau1 from marginalized distribution P(tau1), which is obtained by
+    integrating tau2 dependence from joint truncated exponential distribution
+    P(tau1,tau2). Constraint: a < tau1 < tau2 < b */
 
     // Save original values of the upper bounds
     a_pre_shift = a;
@@ -102,10 +136,10 @@ double shifted_infer_tau(double x,double a, double b, double c){
 
     // Compute normalization of truncated exponential dist.
     inverse_c = 1/c;
-    Z = inverse_c * (exp(c*(-a)) - 1) - ( - a);
+    Z = inverse_c * (exp(c*(-a)) - 1) + a;
     
     //
-    y = Z*x - inverse_c*exp(c*(-a)) - a;
+    y = Z*x - inverse_c*exp(-c*a) - a;
 
     //
     A = -inverse_c;
@@ -122,6 +156,7 @@ double shifted_infer_tau(double x,double a, double b, double c){
     tau += b_pre_shift;
     // cout << tau << endl;
 
+    // Unit test.
     // Check with specific x values
     // double F;
     // F = (1/Z) * ((1/c) * (exp(c*(b-a))-exp(c*(b-tau)))-(tau-a));
@@ -130,6 +165,44 @@ double shifted_infer_tau(double x,double a, double b, double c){
     // assert(abs(F-x) <= atol);
     // assert(a-atol <= tau);
     // assert(tau <= b+atol);
+
+    return tau;
+}
+
+/*----------------------------------------------------------------------------*/
+
+double infer_tau2(double x,double a, double b, double c){
+
+    /* Sample tau2 from simple truncated exponential distribution */
+
+    double tau,Z;
+
+    /* ---- */
+    // Sample the new time of the worm end from truncated exponential dist.
+    /*:::::::::::::::::::: Truncated Exponential RVS :::::::::::::::::::::::::*/
+    Z = 1.0 - exp(c*(b-a));
+    tau = a + log(1.0-Z*x)  / c;
+    // cout << Z << endl;
+    /*::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+
+    return tau;
+}
+
+/*----------------------------------------------------------------------------*/
+
+double infer_tau2_with_rejection(double x,double a, double b, double c){
+
+    /* Sample tau2 from simple truncated exponential distribution */
+
+    double tau,Z;
+
+    /* ---- */
+    // Sample the new time of the worm end from truncated exponential dist.
+    /*:::::::::::::::::::: Truncated Exponential RVS :::::::::::::::::::::::::*/
+    Z = 1.0 - exp(c*(b-a));
+    tau = a + log(1.0-Z*x)  / c;
+    // cout << Z << endl;
+    /*::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
 
     return tau;
 }
@@ -149,130 +222,27 @@ int main(int argc, char** argv){
     b = 4;  // upper bound
     c = -6; // exponential decay
 
-    // To collect samples
+    // Initialize vectors that will store tau1,tau2 samples from joint dist.
     vector<double> samples(num_samples,0);
     vector<double> samples2(num_samples,0);
 
+    // Initialize vectors that will store tau2 samples from simple dist.
+    vector<double> samples3(num_samples,0);
+
     // Initialize a Mersenne Twister RNG
-    int seed = 1;
+    int seed = 1968;
     boost::random::mt19937 rng(seed);
 
     // Create a uniform distribution with support: [0.0,1.0)
     boost::random::uniform_real_distribution<double> rnum(0.0,1.0);
 
-    // Time execution of exp(x)
-    double arg1sum = 0;
+    // Declare variables related 
     auto start = high_resolution_clock::now();
-    for (int i=0; i < num_samples; i++){
-        arg1sum += exp((i*1.0)/num_samples);
-    }
     auto end = high_resolution_clock::now();
-    cout << "arg1sum: " << arg1sum << endl;
     auto elapsed_time = duration_cast<nanoseconds>(end - start);
     double duration = elapsed_time.count() * 1e-9;
 
-    cout << scientific;
-
-    cout << endl;
-    cout << "subroutine         | Time per call (seconds)" << endl;
-    cout << "------------------------------------" << endl;
-    cout << "exp()              | " << duration/num_samples <<endl;
-
-    // Time execution of log()"
-    arg0 = 1.2;
-    double accum = 0;
-    start = high_resolution_clock::now();
-    for (int i=0; i < num_samples; i++){
-        accum += log(i+0.0000001);
-    }
-     end = high_resolution_clock::now();
-     cout << "accum: " << accum << endl;
-     elapsed_time = duration_cast<nanoseconds>(end - start);
-     duration = elapsed_time.count() * 1e-9;
-
-    cout << "------------------------------------" << endl;
-    cout << "log()              | " << duration/num_samples <<endl;
-
-    // Time execution of max()"
-    start = high_resolution_clock::now();
-    for (int i=0; i < num_samples; i++){
-        max(arg0,arg1);
-    }
-     end = high_resolution_clock::now();
-     elapsed_time = duration_cast<nanoseconds>(end - start);
-     duration = elapsed_time.count() * 1e-9;
-
-    cout << "------------------------------------" << endl;
-    cout << "max()              | " << duration/num_samples <<endl;
-
-    // Time execution of rnum(rng) "i.e rand()"
-    double randsum =0;
-    start = high_resolution_clock::now();
-    for (int i=0; i < num_samples; i++){
-        x = rnum(rng);
-
-        randsum += x;
-    }
-
-     end = high_resolution_clock::now();
-     cout << "randsum: " << randsum << endl;
-     elapsed_time = duration_cast<nanoseconds>(end - start);
-     duration = elapsed_time.count() * 1e-9;
-
-    cout << "------------------------------------" << endl;
-    cout << "rand()             | " << duration/num_samples <<endl;
-
-    // Time execution of exp(x1-x2) "i.e rand()"
-    randsum =0;
-    double x1,x2;
-    start = high_resolution_clock::now();
-    for (int i=0; i < num_samples; i++){
-        x1 = rnum(rng);
-        x2 = rnum(rng);
-
-        randsum += exp(x1-x2);
-    }
-
-    end = high_resolution_clock::now();
-    cout << "randsum: " << randsum << endl;
-     elapsed_time = duration_cast<nanoseconds>(end - start);
-     duration = elapsed_time.count() * 1e-9;
-
-    cout << "------------------------------------" << endl;
-    cout << "exp(x1-x2)         | " << duration/num_samples <<endl;
-
-    // Time execution of lambert_w0"
-    accum = 0;
-    double low = -1.0/exp(1.0);
-    start = high_resolution_clock::now();
-    for (int i=0; i < num_samples; i++){
-        accum += lambert_w0(low*(1.0 - (i*1.0)/num_samples));
-    }
-     end = high_resolution_clock::now();
-     cout << "accum: " << accum << endl;
-     elapsed_time = duration_cast<nanoseconds>(end - start);
-     duration = elapsed_time.count() * 1e-9;
-
-    cout << "------------------------------------" << endl;
-    cout << "lambert_w0         | " << duration/num_samples <<endl;
-
-    // Time execution of lambert_wm1"
-    arg3 = -0.2;
-    double arg3sum = 0;
-    start = high_resolution_clock::now();
-    for (int i=0; i < num_samples; i++){
-        lambert_wm1(arg3);
-
-        arg3sum+=arg3;
-
-    }
-     end = high_resolution_clock::now();
-     elapsed_time = duration_cast<nanoseconds>(end - start);
-     duration = elapsed_time.count() * 1e-9;
-
-    cout << "------------------------------------" << endl;
-    cout << "lambert_wm1        | " << duration/num_samples <<endl;
-
+    // Generate samples and/or time execution of infer_tau1()
     double sum;
     sum = 0;
     // Time execution of sampling tau1 and tau2"
@@ -280,33 +250,7 @@ int main(int argc, char** argv){
     for (int i=0;i<num_samples;i++){
         /* sample a random x value from U(0,1)*/
         x = rnum(rng);
-        tau1 = infer_tau(x,a,b,c);
-        // samples[i] = tau1;
-
-        x = rnum(rng);
-        a_new = tau1;
-        tau2 = infer_tau2(x,a_new,b,c);
-
-        // samples2[i] = tau2;
-        sum+=tau2;
-    }
-    
-     end = high_resolution_clock::now();
-     cout << "sum: " << sum << endl;
-     elapsed_time = duration_cast<nanoseconds>(end - start);
-     duration = elapsed_time.count() * 1e-9;
-
-    cout << "------------------------------------" << endl;
-    cout << "sampling tau1,tau2 | " << duration/num_samples <<endl;
-    cout << endl;
-
-    sum = 0;
-    // Time execution of sampling shifted tau1 and tau2"
-    start = high_resolution_clock::now();
-    for (int i=0;i<num_samples;i++){
-        /* sample a random x value from U(0,1)*/
-        x = rnum(rng);
-        tau1 = shifted_infer_tau(x,a,b,c);
+        tau1 = infer_tau1(x,a,b,c);
         samples[i] = tau1;
 
         x = rnum(rng);
@@ -314,62 +258,87 @@ int main(int argc, char** argv){
         tau2 = infer_tau2(x,a_new,b,c);
 
         samples2[i] = tau2;
-        sum+=tau1; 
+        sum+=tau2;
     }
-    cout << "sum: " << sum << endl;
-    
+
      end = high_resolution_clock::now();
+     cout << "\nsum: " << sum << endl;
      elapsed_time = duration_cast<nanoseconds>(end - start);
      duration = elapsed_time.count() * 1e-9;
 
     cout << "------------------------------------" << endl;
-    cout << "shifted  tau1,tau2 | " << duration/num_samples <<endl;
+    cout << "sampling tau1,tau2 | " << duration/num_samples <<endl;
     cout << endl;
 
-    // Test issue where argument of lambert W -1 branch is illegal
-    long double z = -6.3801721902898252e-309;
-    double result;
-    result = lambert_wm1(z);
+    /* ------ All of this is related to saving to file ------- */
 
-    long double inverse_e = -1/exp(1);
-    cout << setprecision(24) << inverse_e << endl;
-    cout << setprecision(24) << -boost::math::constants::exp_minus_one<long double>() << endl;
+    // Create file name
+    string filename,filename2;
+    filename=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
+    "_samples.dat";
 
-    // test if we can perform comparison where one number is underflowed
-    double underflowed_num,legal_num;
-    underflowed_num = -2.569141358374482e-322;
-    legal_num = 1.01;
-    cout << underflowed_num/100 << " " << legal_num << endl;
-    cout << (underflowed_num < legal_num) << endl;
-    if (abs(underflowed_num) < 1e-20 ){cout << "VEGETA!!!!" << endl;} 
-    cout << lambert_wm1(-1e-300) << " " << lambert_wm1(0) << " " << lambert_wm1(-1e-100) << endl;
-    cout << lambert_w0(-1e-100) << " " << lambert_w0(0) << " " << lambert_w0(-1e-14) << endl;
+    filename2=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
+    "_samples2.dat";
 
+    // Open files
+    ofstream samples_file,samples_file2;
+    samples_file.open(filename);
+    samples_file2.open(filename2);
 
+    // Write sampled numbers to file
+    for (int i=0; i<samples.size(); i++){
+        samples_file<<fixed<<setprecision(17)<<samples[i]<<endl;
+        samples_file2<<fixed<<setprecision(17)<<samples2[i]<<endl;
+    }
 
-    // // Create file name
-    // string filename,filename2;
-    // filename=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
-    // "_samples.dat";
+    // Close file
+    samples_file.close();
+    samples_file2.close();
 
-    // filename2=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
-    // "_samples2.dat";
+    // sum = 0;
+    // // Time execution of sampling shifted tau1 and tau2"
+    // start = high_resolution_clock::now();
+    // for (int i=0;i<num_samples;i++){
+    //     /* sample a random x value from U(0,1)*/
+    //     x = rnum(rng);
+    //     tau1 = shifted_infer_tau1(x,a,b,c);
+    //     samples[i] = tau1;
 
-    // // Open files
-    // ofstream samples_file,samples_file2;
-    // samples_file.open(filename);
-    // samples_file2.open(filename2);
+    //     x = rnum(rng);
+    //     a_new = tau1;
+    //     tau2 = infer_tau2(x,a_new,b,c);
 
-
-    // // Write sampled numbers to file
-    // for (int i=0; i<samples.size(); i++){
-    //     samples_file<<fixed<<setprecision(17)<<samples[i]<<endl;
-    //     samples_file2<<fixed<<setprecision(17)<<samples2[i]<<endl;
+    //     samples2[i] = tau2;
+    //     sum+=tau1; 
     // }
+    // cout << "sum: " << sum << endl;
+    
+    //  end = high_resolution_clock::now();
+    //  elapsed_time = duration_cast<nanoseconds>(end - start);
+    //  duration = elapsed_time.count() * 1e-9;
 
-    // // Close file
-    // samples_file.close();
-    // samples_file2.close();
+    // cout << "------------------------------------" << endl;
+    // cout << "shifted  tau1,tau2 | " << duration/num_samples <<endl;
+    // cout << endl;
+
+    // Test issue where argument of lambert W -1 branch is illegal
+    // long double z = -6.3801721902898252e-309;
+    // double result;
+    // result = lambert_wm1(z);
+
+    // long double inverse_e = -1/exp(1);
+    // cout << setprecision(24) << inverse_e << endl;
+    // cout << setprecision(24) << -boost::math::constants::exp_minus_one<long double>() << endl;
+
+    // // test if we can perform comparison where one number is underflowed
+    // double underflowed_num,legal_num;
+    // underflowed_num = -2.569141358374482e-322;
+    // legal_num = 1.01;
+    // cout << underflowed_num/100 << " " << legal_num << endl;
+    // cout << (underflowed_num < legal_num) << endl;
+    // if (abs(underflowed_num) < 1e-20 ){cout << "VEGETA!!!!" << endl;} 
+    // cout << lambert_wm1(-1e-300) << " " << lambert_wm1(0) << " " << lambert_wm1(-1e-100) << endl;
+    // cout << lambert_w0(-1e-100) << " " << lambert_w0(0) << " " << lambert_w0(-1e-14) << endl;
 
     return 0;
 }
