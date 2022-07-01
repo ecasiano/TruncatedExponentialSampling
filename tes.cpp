@@ -40,6 +40,7 @@ double infer_tau(double x,double a, double b, double c){
 
     // Compute normalization of truncated exponential dist.
     Z = (1/c) * (exp(c*(b-a)) - 1) - (b - a);
+    // cout << Z << endl;
     
     //
     y = Z*x - (1/c)*exp(c*(b-a)) - a;
@@ -49,6 +50,7 @@ double infer_tau(double x,double a, double b, double c){
 
     // Determine LambertW branch & compute tau
     arg = max(-1/exp(1), A*c*exp(c*y));
+    // cout << -1/exp(1) << " " << A*c*exp(c*y) << endl;
     if (c < 0){ // k = 0 branch
         tau = (1/c)*lambert_w0(arg)-y;
     }
@@ -69,15 +71,16 @@ double infer_tau(double x,double a, double b, double c){
 
 /*----------------------------------------------------------------------------*/
 
-double infer_tau2(double x,double a, double b, double c){
+inline double infer_tau2(double x,double a, double b, double c){
 
-    double tau,Z,atol;
+    double tau,Z;
 
     /* ---- */
     // Sample the new time of the worm end from truncated exponential dist.
     /*:::::::::::::::::::: Truncated Exponential RVS :::::::::::::::::::::::::*/
     Z = 1.0 - exp(-(-c)*(b-a));
     tau = a - log(1.0-Z*x)  / (-c);
+    // cout << Z << endl;
     /*::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
 
     return tau;
@@ -94,15 +97,15 @@ double shifted_infer_tau(double x,double a, double b, double c){
     b_pre_shift = b;
 
     // Shift lower and upper bounds
-    a -= b;
-    b -= b;
+    a = a-b;
+    b = 0;
 
     // Compute normalization of truncated exponential dist.
     inverse_c = 1/c;
-    Z = inverse_c * (exp(c*(b-a)) - 1) - (b - a);
+    Z = inverse_c * (exp(c*(-a)) - 1) - ( - a);
     
     //
-    y = Z*x - inverse_c*exp(c*(b-a)) - a;
+    y = Z*x - inverse_c*exp(c*(-a)) - a;
 
     //
     A = -inverse_c;
@@ -142,9 +145,9 @@ int main(int argc, char** argv){
     int wm1_ctr = 0;
 
     // set parameters
-    a = 0.1;  // lower bound
-    b = 1.3;  // upper bound
-    c = -0.5; // exponential decay
+    a = 0.000001;  // lower bound
+    b = 4;  // upper bound
+    c = -6; // exponential decay
 
     // To collect samples
     vector<double> samples(num_samples,0);
@@ -158,12 +161,13 @@ int main(int argc, char** argv){
     boost::random::uniform_real_distribution<double> rnum(0.0,1.0);
 
     // Time execution of exp(x)
-    arg1 = 1.0;
+    double arg1sum = 0;
     auto start = high_resolution_clock::now();
     for (int i=0; i < num_samples; i++){
-        exp(arg1);
+        arg1sum += exp((i*1.0)/num_samples);
     }
     auto end = high_resolution_clock::now();
+    cout << "arg1sum: " << arg1sum << endl;
     auto elapsed_time = duration_cast<nanoseconds>(end - start);
     double duration = elapsed_time.count() * 1e-9;
 
@@ -176,12 +180,13 @@ int main(int argc, char** argv){
 
     // Time execution of log()"
     arg0 = 1.2;
+    double accum = 0;
     start = high_resolution_clock::now();
     for (int i=0; i < num_samples; i++){
-        x = rnum(rng);
-        log(x);
+        accum += log(i+0.0000001);
     }
      end = high_resolution_clock::now();
+     cout << "accum: " << accum << endl;
      elapsed_time = duration_cast<nanoseconds>(end - start);
      duration = elapsed_time.count() * 1e-9;
 
@@ -201,16 +206,16 @@ int main(int argc, char** argv){
     cout << "max()              | " << duration/num_samples <<endl;
 
     // Time execution of rnum(rng) "i.e rand()"
-    float randsum =0;
+    double randsum =0;
     start = high_resolution_clock::now();
     for (int i=0; i < num_samples; i++){
         x = rnum(rng);
 
         randsum += x;
     }
-    // cout << "randsum: " << randsum << endl;
 
      end = high_resolution_clock::now();
+     cout << "randsum: " << randsum << endl;
      elapsed_time = duration_cast<nanoseconds>(end - start);
      duration = elapsed_time.count() * 1e-9;
 
@@ -227,9 +232,9 @@ int main(int argc, char** argv){
 
         randsum += exp(x1-x2);
     }
-    cout << "randsum: " << randsum << endl;
 
-     end = high_resolution_clock::now();
+    end = high_resolution_clock::now();
+    cout << "randsum: " << randsum << endl;
      elapsed_time = duration_cast<nanoseconds>(end - start);
      duration = elapsed_time.count() * 1e-9;
 
@@ -237,12 +242,14 @@ int main(int argc, char** argv){
     cout << "exp(x1-x2)         | " << duration/num_samples <<endl;
 
     // Time execution of lambert_w0"
-    arg2 = 10.0;
+    accum = 0;
+    double low = -1.0/exp(1.0);
     start = high_resolution_clock::now();
     for (int i=0; i < num_samples; i++){
-        lambert_w0(arg2);
+        accum += lambert_w0(low*(1.0 - (i*1.0)/num_samples));
     }
      end = high_resolution_clock::now();
+     cout << "accum: " << accum << endl;
      elapsed_time = duration_cast<nanoseconds>(end - start);
      duration = elapsed_time.count() * 1e-9;
 
@@ -251,7 +258,7 @@ int main(int argc, char** argv){
 
     // Time execution of lambert_wm1"
     arg3 = -0.2;
-    float arg3sum = 0;
+    double arg3sum = 0;
     start = high_resolution_clock::now();
     for (int i=0; i < num_samples; i++){
         lambert_wm1(arg3);
@@ -266,7 +273,7 @@ int main(int argc, char** argv){
     cout << "------------------------------------" << endl;
     cout << "lambert_wm1        | " << duration/num_samples <<endl;
 
-    float sum;
+    double sum;
     sum = 0;
     // Time execution of sampling tau1 and tau2"
     start = high_resolution_clock::now();
@@ -281,11 +288,11 @@ int main(int argc, char** argv){
         tau2 = infer_tau2(x,a_new,b,c);
 
         // samples2[i] = tau2;
-        sum+=tau1; 
+        sum+=tau2;
     }
-    cout << "sum: " << sum << endl;
     
      end = high_resolution_clock::now();
+     cout << "sum: " << sum << endl;
      elapsed_time = duration_cast<nanoseconds>(end - start);
      duration = elapsed_time.count() * 1e-9;
 
@@ -319,29 +326,50 @@ int main(int argc, char** argv){
     cout << "shifted  tau1,tau2 | " << duration/num_samples <<endl;
     cout << endl;
 
-    // Create file name
-    string filename,filename2;
-    filename=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
-    "_samples.dat";
+    // Test issue where argument of lambert W -1 branch is illegal
+    long double z = -6.3801721902898252e-309;
+    double result;
+    result = lambert_wm1(z);
 
-    filename2=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
-    "_samples2.dat";
+    long double inverse_e = -1/exp(1);
+    cout << setprecision(24) << inverse_e << endl;
+    cout << setprecision(24) << -boost::math::constants::exp_minus_one<long double>() << endl;
 
-    // Open files
-    ofstream samples_file,samples_file2;
-    samples_file.open(filename);
-    samples_file2.open(filename2);
+    // test if we can perform comparison where one number is underflowed
+    double underflowed_num,legal_num;
+    underflowed_num = -2.569141358374482e-322;
+    legal_num = 1.01;
+    cout << underflowed_num/100 << " " << legal_num << endl;
+    cout << (underflowed_num < legal_num) << endl;
+    if (abs(underflowed_num) < 1e-20 ){cout << "VEGETA!!!!" << endl;} 
+    cout << lambert_wm1(-1e-300) << " " << lambert_wm1(0) << " " << lambert_wm1(-1e-100) << endl;
+    cout << lambert_w0(-1e-100) << " " << lambert_w0(0) << " " << lambert_w0(-1e-14) << endl;
 
 
-    // Write sampled numbers to file
-    for (int i=0; i<samples.size(); i++){
-        samples_file<<fixed<<setprecision(17)<<samples[i]<<endl;
-        samples_file2<<fixed<<setprecision(17)<<samples2[i]<<endl;
-    }
 
-    // Close file
-    samples_file.close();
-    samples_file2.close();
+    // // Create file name
+    // string filename,filename2;
+    // filename=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
+    // "_samples.dat";
+
+    // filename2=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
+    // "_samples2.dat";
+
+    // // Open files
+    // ofstream samples_file,samples_file2;
+    // samples_file.open(filename);
+    // samples_file2.open(filename2);
+
+
+    // // Write sampled numbers to file
+    // for (int i=0; i<samples.size(); i++){
+    //     samples_file<<fixed<<setprecision(17)<<samples[i]<<endl;
+    //     samples_file2<<fixed<<setprecision(17)<<samples2[i]<<endl;
+    // }
+
+    // // Close file
+    // samples_file.close();
+    // samples_file2.close();
 
     return 0;
 }
