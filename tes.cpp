@@ -190,44 +190,54 @@ double infer_tau2(double x,double a, double b, double c){
 
 /*----------------------------------------------------------------------------*/
 
-double infer_tau2_with_rejection(double x,double a, double b, double c){
+double infer_tau2_with_rejection(double tau_old, double x, double x2,
+                                 double a, double b, double c){
 
     /* Sample tau2 from simple truncated exponential distribution */
 
-    double tau,Z;
+    double Z,P,Pmax,tau_new;
 
-    /* ---- */
-    // Sample the new time of the worm end from truncated exponential dist.
-    /*:::::::::::::::::::: Truncated Exponential RVS :::::::::::::::::::::::::*/
-    Z = 1.0 - exp(c*(b-a));
-    tau = a + log(1.0-Z*x)  / c;
-    // cout << Z << endl;
-    /*::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+    // boost::random::uniform_real_distribution<double> rnum(0.0,1.0);
 
-    return tau;
+    // Propose new time
+    tau_new = a + x*(b-a);
+
+    // Compute normalization constant
+    Z = 1.0 - exp(-c*(b-a));
+
+    // Compute probability density
+    // tau_new = x;
+    P = (1/Z)*c*exp(-c*(tau_new-a));
+
+    // cout << P << endl;
+
+    // Get maximum value of truncexpon
+    Pmax =  c/Z; // assuming c>0
+
+    if (x2*Pmax < P){
+        return tau_new;
+    }
+    else {
+        return tau_old;
+    }
 }
 
 /*----------------------------------------------------------------------------*/
 // Main
 int main(int argc, char** argv){
 
-    volatile double a,a_new,b,b_new,c,x,tau1,tau2,arg1,arg2,arg3,arg0;
-    auto constexpr num_samples = 5'000'000;
+    volatile double a,a_new,b,b_new,c,x,x2,tau1,tau2,arg1,arg2,arg3,arg0,tau;
+    auto constexpr num_samples = 500'000;
 
     int w0_ctr = 0;
     int wm1_ctr = 0;
 
-    // set parameters
-    a = 0.000001;  // lower bound
-    b = 4;  // upper bound
-    c = -6; // exponential decay
+    // Initialize vectors that will store tau2 samples from simple dist.
+    vector<double> samples0(num_samples,0);
 
     // Initialize vectors that will store tau1,tau2 samples from joint dist.
-    vector<double> samples(num_samples,0);
+    vector<double> samples1(num_samples,0);
     vector<double> samples2(num_samples,0);
-
-    // Initialize vectors that will store tau2 samples from simple dist.
-    vector<double> samples3(num_samples,0);
 
     // Initialize a Mersenne Twister RNG
     int seed = 1968;
@@ -242,58 +252,81 @@ int main(int argc, char** argv){
     auto elapsed_time = duration_cast<nanoseconds>(end - start);
     double duration = elapsed_time.count() * 1e-9;
 
-    // Generate samples and/or time execution of infer_tau1()
-    double sum;
-    sum = 0;
-    // Time execution of sampling tau1 and tau2"
-    start = high_resolution_clock::now();
+    // set parameters
+    a = 0.30;  // lower bound
+    b = 0.75;  // upper bound
+    c = 5; // exponential decay
+
+    // Generate simple truncated exponential distribution samples
+    tau = a + rnum(rng)*(b-a); // Initialize tau to random value in interval
+    tau = a;
     for (int i=0;i<num_samples;i++){
         /* sample a random x value from U(0,1)*/
         x = rnum(rng);
-        tau1 = infer_tau1(x,a,b,c);
-        samples[i] = tau1;
-
-        x = rnum(rng);
-        a_new = tau1;
-        tau2 = infer_tau2(x,a_new,b,c);
-
-        samples2[i] = tau2;
-        sum+=tau2;
+        x2 = rnum(rng);
+        tau = infer_tau2_with_rejection(tau,x,x2,a,b,c);
+        samples0[i] = tau;
     }
 
-     end = high_resolution_clock::now();
-     cout << "\nsum: " << sum << endl;
-     elapsed_time = duration_cast<nanoseconds>(end - start);
-     duration = elapsed_time.count() * 1e-9;
+    // // Generate samples and/or time execution of infer_tau1()
+    // double sum;
+    // sum = 0;
+    // // Time execution of sampling tau1 and tau2"
+    // start = high_resolution_clock::now();
+    // for (int i=0;i<num_samples;i++){
+    //     /* sample a random x value from U(0,1)*/
+    //     x = rnum(rng);
+    //     tau1 = infer_tau1(x,a,b,c);
+    //     samples[i] = tau1;
 
-    cout << "------------------------------------" << endl;
-    cout << "sampling tau1,tau2 | " << duration/num_samples <<endl;
-    cout << endl;
+    //     x = rnum(rng);
+    //     a_new = tau1;
+    //     tau2 = infer_tau2(x,a_new,b,c);
+
+    //     samples2[i] = tau2;
+    //     sum+=tau2;
+    // }
+
+    //  end = high_resolution_clock::now();
+    //  cout << "\nsum: " << sum << endl;
+    //  elapsed_time = duration_cast<nanoseconds>(end - start);
+    //  duration = elapsed_time.count() * 1e-9;
+
+    // cout << "------------------------------------" << endl;
+    // cout << "sampling tau1,tau2 | " << duration/num_samples <<endl;
+    // cout << endl;
 
     /* ------ All of this is related to saving to file ------- */
 
     // Create file name
-    string filename,filename2;
-    filename=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
-    "_samples.dat";
+    string filename0,filename1,filename2;
 
-    filename2=to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
+    filename0="./data/"+to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
+    "_samples0.dat";
+
+    filename1="./data/"+to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
+    "_samples1.dat";
+
+    filename2="./data/"+to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
     "_samples2.dat";
 
     // Open files
-    ofstream samples_file,samples_file2;
-    samples_file.open(filename);
-    samples_file2.open(filename2);
+    ofstream samples0_file,samples1_file,samples2_file;
+    samples0_file.open(filename0);
+    samples1_file.open(filename1);
+    samples2_file.open(filename2);
 
     // Write sampled numbers to file
-    for (int i=0; i<samples.size(); i++){
-        samples_file<<fixed<<setprecision(17)<<samples[i]<<endl;
-        samples_file2<<fixed<<setprecision(17)<<samples2[i]<<endl;
+    for (int i=0; i<num_samples; i++){
+        samples0_file<<fixed<<setprecision(17)<<samples0[i]<<endl;
+        samples1_file<<fixed<<setprecision(17)<<samples1[i]<<endl;
+        samples2_file<<fixed<<setprecision(17)<<samples2[i]<<endl;
     }
-
+    
     // Close file
-    samples_file.close();
-    samples_file2.close();
+    samples0_file.close();
+    samples1_file.close();
+    samples2_file.close();
 
     // sum = 0;
     // // Time execution of sampling shifted tau1 and tau2"
