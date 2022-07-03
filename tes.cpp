@@ -190,31 +190,35 @@ double infer_tau2(double x,double a, double b, double c){
 
 /*----------------------------------------------------------------------------*/
 
-double infer_tau2_with_rejection(double tau_old, double x, double x2,
-                                 double a, double b, double c){
+double infer_tau2_with_rejection(double tau_old,
+                                 double a, double b, double c,
+                                 boost::random::mt19937 &rng){
 
     /* Sample tau2 from simple truncated exponential distribution */
 
-    double Z,P,Pmax,tau_new;
+    double Z,P,Pmax,tau_new,x1,x2,u;
 
-    // boost::random::uniform_real_distribution<double> rnum(0.0,1.0);
+    boost::random::uniform_real_distribution<double> rnum(0.0,1.0);
+
+    x1 = rnum(rng);
+    x2 = rnum(rng);
 
     // Propose new time
-    tau_new = a + x*(b-a);
+    tau_new = a + x1*(b-a);
 
     // Compute normalization constant
     Z = 1.0 - exp(-c*(b-a));
 
     // Compute probability density
-    // tau_new = x;
     P = (1/Z)*c*exp(-c*(tau_new-a));
-
-    // cout << P << endl;
 
     // Get maximum value of truncexpon
     Pmax =  c/Z; // assuming c>0
 
-    if (x2*Pmax < P){
+    // Rescaled uniform number
+    u = x2*Pmax;
+
+    if (u <= P){
         return tau_new;
     }
     else {
@@ -223,21 +227,48 @@ double infer_tau2_with_rejection(double tau_old, double x, double x2,
 }
 
 /*----------------------------------------------------------------------------*/
+
+double infer_tau2_no_rejection(double tau_old,
+                                 double a, double b, double c,
+                                 boost::random::mt19937 &rng){
+
+    /* Sample tau2 from simple truncated exponential distribution */
+
+    double tau,Z,P,Pmax,tau_new,x,u;
+
+    boost::random::uniform_real_distribution<double> rnum(0.0,1.0);
+
+    x = rnum(rng);
+
+    /* ---- */
+    // Sample the new time of the worm end from truncated exponential dist.
+    /*:::::::::::::::::::: Truncated Exponential RVS :::::::::::::::::::::::::*/
+    Z = 1.0 - exp(-c*(b-a));
+    tau = a - log(1.0-Z*x)  / c;
+    // cout << Z << endl;
+    /*::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+
+    return tau;
+}
+
+/*----------------------------------------------------------------------------*/
 // Main
 int main(int argc, char** argv){
 
     volatile double a,a_new,b,b_new,c,x,x2,tau1,tau2,arg1,arg2,arg3,arg0,tau;
-    auto constexpr num_samples = 500'000;
+    auto constexpr num_samples = 10'000;
 
     int w0_ctr = 0;
     int wm1_ctr = 0;
 
     // Initialize vectors that will store tau2 samples from simple dist.
     vector<double> samples0(num_samples,0);
+    vector<double> samples1(num_samples,0);
+
 
     // Initialize vectors that will store tau1,tau2 samples from joint dist.
-    vector<double> samples1(num_samples,0);
     vector<double> samples2(num_samples,0);
+    vector<double> samples3(num_samples,0);
 
     // Initialize a Mersenne Twister RNG
     int seed = 1968;
@@ -262,10 +293,17 @@ int main(int argc, char** argv){
     tau = a;
     for (int i=0;i<num_samples;i++){
         /* sample a random x value from U(0,1)*/
-        x = rnum(rng);
-        x2 = rnum(rng);
-        tau = infer_tau2_with_rejection(tau,x,x2,a,b,c);
+        tau = infer_tau2_with_rejection(tau,a,b,c,rng);
         samples0[i] = tau;
+    }
+
+    // Generate simple truncated exponential distribution samples
+    tau = a + rnum(rng)*(b-a); // Initialize tau to random value in interval
+    tau = a;
+    for (int i=0;i<num_samples;i++){
+        /* sample a random x value from U(0,1)*/
+        tau = infer_tau2_no_rejection(tau,a,b,c,rng);
+        samples1[i] = tau;
     }
 
     // // Generate samples and/or time execution of infer_tau1()
