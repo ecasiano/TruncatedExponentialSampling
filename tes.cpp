@@ -212,8 +212,8 @@ double infer_tau2_with_rejection(double tau_old,
     // Compute probability density
     P = (1/Z)*c*exp(-c*(tau_new-a));
 
-    // Get maximum value of truncexpon
-    Pmax =  c/Z; // assuming c>0
+    // Get maximum value of truncexpon (to rescale uniform dist.)
+    Pmax = abs(c);
 
     // Rescaled uniform number
     u = x2*Pmax;
@@ -256,7 +256,7 @@ double infer_tau2_no_rejection(double tau_old,
 int main(int argc, char** argv){
 
     volatile double a,a_new,b,b_new,c,x,x2,tau1,tau2,arg1,arg2,arg3,arg0,tau;
-    auto constexpr num_samples = 10'000;
+    auto constexpr num_samples = 1'000'000;
 
     int w0_ctr = 0;
     int wm1_ctr = 0;
@@ -284,9 +284,9 @@ int main(int argc, char** argv){
     double duration = elapsed_time.count() * 1e-9;
 
     // set parameters
-    a = 0.30;  // lower bound
-    b = 0.75;  // upper bound
-    c = 5; // exponential decay
+    a = 0.3;  // lower bound
+    b = 1.0;  // upper bound
+    c = -5; // exponential decay
 
     // Generate simple truncated exponential distribution samples
     tau = a + rnum(rng)*(b-a); // Initialize tau to random value in interval
@@ -340,10 +340,10 @@ int main(int argc, char** argv){
     string filename0,filename1,filename2;
 
     filename0="./data/"+to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
-    "_samples0.dat";
+    "_simpleTruncexpon_rejection.dat";
 
     filename1="./data/"+to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
-    "_samples1.dat";
+    "_simpleTruncexpon_direct.dat";
 
     filename2="./data/"+to_string(a)+"_"+to_string(b)+"_"+to_string(c)+
     "_samples2.dat";
